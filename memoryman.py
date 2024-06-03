@@ -30,11 +30,11 @@ class UnequalSizedPartitioning:
         self.partitions = partitions
         self.allocated = [None] * len(partitions)
 
-    def allocate(self, process_id, size):
-        for i in range(len(self.partitions)):
-            if self.allocated[i] is None and self.partitions[i] >= size:
-                self.allocated[i] = process_id
-                return True
+    def allocate(self, process_id, size, strategy="first_fit"):
+        index = self._find_partition(size, strategy)
+        if index is not None:
+            self.allocated[index] = process_id
+            return True
         return False
 
     def deallocate(self, process_id):
@@ -48,22 +48,48 @@ class UnequalSizedPartitioning:
             status = "Free" if self.allocated[i] is None else f"Process {self.allocated[i]}"
             print(f"Partition {i} (Size {partition}): {status}")
 
+    def _find_partition(self, size, strategy):
+        if strategy == "first_fit":
+            for i in range(len(self.partitions)):
+                if self.allocated[i] is None and self.partitions[i] >= size:
+                    return i
+        elif strategy == "best_fit":
+            best_index = None
+            best_size = None
+            for i in range(len(self.partitions)):
+                if self.allocated[i] is None and self.partitions[i] >= size:
+                    if best_size is None or self.partitions[i] < best_size:
+                        best_index = i
+                        best_size = self.partitions[i]
+            return best_index
+        elif strategy == "worst_fit":
+            worst_index = None
+            worst_size = None
+            for i in range(len(self.partitions)):
+                if self.allocated[i] is None and self.partitions[i] >= size:
+                    if worst_size is None or self.partitions[i] > worst_size:
+                        worst_index = i
+                        worst_size = self.partitions[i]
+            return worst_index
+        return None
+
 
 class DynamicMemoryAllocation:
     def __init__(self, memory_size):
         self.memory_size = memory_size
         self.memory = [(0, memory_size, None)]  # (start, size, process_id)
 
-    def allocate(self, process_id, size):
-        for i, (start, block_size, pid) in enumerate(self.memory):
-            if pid is None and block_size >= size:
-                # Allocate the block
-                self.memory[i] = (start + size, block_size - size, None)
-                if self.memory[i][1] == 0:
-                    self.memory.pop(i)
-                self.memory.append((start, size, process_id))
-                self.memory.sort()
-                return True
+    def allocate(self, process_id, size, strategy="first_fit"):
+        index = self._find_block(size, strategy)
+        if index is not None:
+            start, block_size, pid = self.memory[index]
+            # Allocate the block
+            self.memory[index] = (start + size, block_size - size, None)
+            if self.memory[index][1] == 0:
+                self.memory.pop(index)
+            self.memory.append((start, size, process_id))
+            self.memory.sort()
+            return True
         return False
 
     def deallocate(self, process_id):
@@ -88,6 +114,31 @@ class DynamicMemoryAllocation:
                 print(f"Free Block: Start {start}, Size {size}")
             else:
                 print(f"Process {pid}: Start {start}, Size {size}")
+
+    def _find_block(self, size, strategy):
+        if strategy == "first_fit":
+            for i, (start, block_size, pid) in enumerate(self.memory):
+                if pid is None and block_size >= size:
+                    return i
+        elif strategy == "best_fit":
+            best_index = None
+            best_size = None
+            for i, (start, block_size, pid) in enumerate(self.memory):
+                if pid is None and block_size >= size:
+                    if best_size is None or block_size < best_size:
+                        best_index = i
+                        best_size = block_size
+            return best_index
+        elif strategy == "worst_fit":
+            worst_index = None
+            worst_size = None
+            for i, (start, block_size, pid) in enumerate(self.memory):
+                if pid is None and block_size >= size:
+                    if worst_size is None or block_size > worst_size:
+                        worst_index = i
+                        worst_size = block_size
+            return worst_index
+        return None
 
 
 class BuddySystem:
@@ -170,8 +221,10 @@ def main():
         manager = FixedSizedPartitioning(memory_size, partition_size)
     elif technique == 'unequal':
         partitions = list(map(int, input("Enter partition sizes separated by space: ").split()))
+        strategy = input("Select allocation strategy (first_fit, best_fit, worst_fit): ")
         manager = UnequalSizedPartitioning(partitions)
     elif technique == 'dynamic':
+        strategy = input("Select allocation strategy (first_fit, best_fit, worst_fit): ")
         manager = DynamicMemoryAllocation(memory_size)
     elif technique == 'buddy':
         manager = BuddySystem(memory_size)
@@ -187,7 +240,7 @@ def main():
         if command == 'allocate':
             process_id = int(input("Enter process ID: "))
             size = int(input("Enter memory size required: "))
-            if not manager.allocate(process_id, size):
+            if not manager.allocate(process_id, size, strategy):
                 print("Allocation failed")
         elif command == 'deallocate':
             process_id = int(input("Enter process ID: "))
